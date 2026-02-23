@@ -137,6 +137,34 @@ class LinearClient:
             parent_id=i.get("parentId"),
         )
 
+    async def get_issue(self, issue_id: str) -> LinearIssue:
+        query = """
+        query($id: String!) {
+            issue(id: $id) {
+                id identifier title url stateId priority parentId
+                description
+                labels { nodes { id name } }
+            }
+        }
+        """
+        data = await self._request(query, {"id": issue_id})
+        i = data["issue"]
+        labels = [
+            LinearLabel(id=l["id"], name=l["name"])
+            for l in i.get("labels", {}).get("nodes", [])
+        ]
+        return LinearIssue(
+            id=i["id"],
+            identifier=i.get("identifier", ""),
+            title=i.get("title", ""),
+            description=i.get("description", ""),
+            url=i.get("url", ""),
+            state_id=i.get("stateId", ""),
+            priority=i.get("priority", 0),
+            parent_id=i.get("parentId"),
+            labels=labels,
+        )
+
     async def create_sub_issue(
         self, parent_id: str, inp: LinearIssueCreateInput
     ) -> LinearIssue:

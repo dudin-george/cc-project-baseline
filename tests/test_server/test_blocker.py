@@ -15,6 +15,11 @@ from mycroft.server.worker.blocker import (
     get_pending_blockers,
     resolve_blocker,
     resolve_blocker_by_linear_issue,
+    restore_blockers_from_state,
+)
+from mycroft.server.worker.execution_state import (
+    BlockerRecord,
+    ExecutionState,
 )
 
 
@@ -139,3 +144,77 @@ class TestBlockerWaitPattern:
 
 async def _mock_send(*args, **kwargs):
     return True
+
+
+class TestBlockerWithExecutionState:
+    @pytest.mark.asyncio
+    async def test_create_blocker_checkpoints(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("mycroft.server.worker.blocker.settings.linear_api_key", "")
+        monkeypatch.setattr("mycroft.server.worker.blocker.manager.send", _mock_send)
+        monkeypatch.setattr(
+            "mycroft.server.worker.execution_state.settings.data_dir", tmp_path
+        )
+        (tmp_path / "projects" / "proj1").mkdir(parents=True)
+
+        exec_state = ExecutionState(project_id="proj1")
+
+        blocker = await create_blocker(
+            "proj1", "auth", "Which provider?", execution_state=exec_state
+        )
+
+        assert blocker.blocker_id in exec_state.blockers
+        assert exec_state.blockers[blocker.blocker_id].question == "Which provider?"
+        assert not exec_state.blockers[blocker.blocker_id].resolved
+
+    @pytest.mark.asyncio
+    async def test_resolve_blocker_checkpoints(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("mycroft.server.worker.blocker.settings.linear_api_key", "")
+        monkeypatch.setattr("mycroft.server.worker.blocker.manager.send", _mock_send)
+        monkeypatch.setattr(
+            "mycroft.server.worker.execution_state.settings.data_dir", tmp_path
+        )
+        (tmp_path / "projects" / "proj1").mkdir(parents=True)
+
+        exec_state = ExecutionState(project_id="proj1")
+
+        blocker = await create_blocker(
+            "proj1", "auth", "Which provider?", execution_state=exec_state
+        )
+        resolve_blocker(blocker.blocker_id, "Use Google OAuth", execution_state=exec_state)
+
+        assert exec_state.blockers[blocker.blocker_id].resolved
+        assert exec_state.blockers[blocker.blocker_id].answer == "Use Google OAuth"
+
+
+class TestRestoreBlockersFromState:
+    def test_restores_unresolved(self):
+        exec_state = ExecutionState(project_id="proj1")
+        exec_state.blockers = {
+            "b1": BlockerRecord(
+                blocker_id="b1",
+                service_name="auth",
+                question="Which provider?",
+                linear_issue_id="lin-1",
+            ),
+            "b2": BlockerRecord(
+                blocker_id="b2",
+                service_name="api",
+                question="Which db?",
+                resolved=True,
+                answer="PostgreSQL",
+            ),
+        }
+
+        restored = restore_blockers_from_state(exec_state)
+
+        # Only b1 should be restored (b2 is already resolved)
+        assert len(restored) == 1
+        assert restored[0].blocker_id == "b1"
+        assert restored[0].service_name == "auth"
+        assert get_blocker("b1") is not None
+        assert get_blocker("b2") is None  # resolved, not restored
+
+    def test_restores_empty(self):
+        exec_state = ExecutionState(project_id="proj1")
+        restored = restore_blockers_from_state(exec_state)
+        assert restored == []

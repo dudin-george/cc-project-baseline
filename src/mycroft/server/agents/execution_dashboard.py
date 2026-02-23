@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from mycroft.shared.protocol import StepId
 from mycroft.server.agents.base import BaseAgent
 from mycroft.server.agents.tools import user_confirm
+from mycroft.server.worker.execution_state import ExecutionState, TaskRecord, ServiceRecord, recover_execution
+from mycroft.server.worker.orchestrator import Orchestrator
+from mycroft.server.worker.blocker import restore_blockers_from_state
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +67,55 @@ The user can send these commands:
         """
         text_lower = user_text.strip().lower()
 
+        if text_lower == "start":
+            await self._handle_start()
+            return
+
         # Route execution commands to orchestrator (Phase 6)
-        if text_lower in ("start", "pause", "resume", "status") or text_lower.startswith("retry"):
+        if text_lower in ("pause", "resume", "status") or text_lower.startswith("retry"):
             # Phase 6 will add orchestrator routing here.
             # For now, fall through to the conversational agent.
             pass
 
         await super().run(user_text)
+
+    async def _handle_start(self) -> None:
+        """Initialize or recover the orchestrator and begin execution."""
+        project_id = self.project.project_id
+
+        if ExecutionState.exists(project_id):
+            # Recover from crash
+            logger.info("Found existing execution state, recovering...")
+            exec_state = await recover_execution(project_id)
+            restore_blockers_from_state(exec_state)
+
+            if exec_state.pending == 0:
+                logger.info("All tasks already completed, nothing to resume")
+                return
+
+            # Rebuild orchestrator from recovered state
+            repo_path = Path(self.project.metadata.get("repo_path", ""))
+            claude_md = self.project.metadata.get("claude_md", "")
+            business_spec = self.project.metadata.get("business_spec", "")
+
+            orchestrator = Orchestrator.from_execution_state(
+                exec_state,
+                repo_path=repo_path,
+                claude_md=claude_md,
+                business_spec=business_spec,
+            )
+            logger.info(
+                "Resuming execution: %d succeeded, %d remaining",
+                exec_state.succeeded,
+                exec_state.pending,
+            )
+        else:
+            # Fresh start — create ExecutionState from project task data
+            exec_state = ExecutionState(project_id=project_id)
+
+            # Phase 6 will populate tasks/services from Linear data here.
+            # For now, save the empty state as a checkpoint marker.
+            exec_state.save()
+
+            orchestrator = Orchestrator(project_id, execution_state=exec_state)
+            logger.info("Starting fresh execution for project %s", project_id)

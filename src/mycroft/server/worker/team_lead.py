@@ -10,7 +10,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mycroft.server.settings import settings
 from mycroft.server.worker.blocker import PendingBlocker, cleanup_blocker, create_blocker
@@ -20,6 +20,9 @@ from mycroft.server.worker.sub_agents import (
     run_qa_tester,
     run_unit_tester,
 )
+
+if TYPE_CHECKING:
+    from mycroft.server.worker.execution_state import ExecutionState
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +60,14 @@ class TeamLead:
         claude_md: str,
         business_spec: str,
         tasks: list[dict[str, Any]],
+        execution_state: ExecutionState | None = None,
     ) -> None:
         self.project_id = project_id
         self.service_name = service_name
         self.repo_path = repo_path
         self.claude_md = claude_md
         self.business_spec = business_spec
+        self.execution_state = execution_state
         self.state = TeamLeadState(service_name=service_name, tasks=list(tasks))
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # not paused initially
@@ -107,12 +112,15 @@ class TeamLead:
                 task_id,
             )
 
+            if self.execution_state:
+                self.execution_state.checkpoint_task_started(task_id)
+
             result = await self._execute_task(task)
             results.append(result)
             self.state.completed.append(result)
 
             if not result.success:
-                # Retry once
+                # Retry
                 retry = settings.worker_retry_count
                 for attempt in range(retry):
                     logger.info(
@@ -122,12 +130,23 @@ class TeamLead:
                         attempt + 1,
                         retry,
                     )
+                    if self.execution_state:
+                        self.execution_state.checkpoint_task_started(task_id)
                     result = await self._execute_task(task)
                     if result.success:
                         # Replace the failed result
                         self.state.completed[-1] = result
                         results[-1] = result
                         break
+
+            if self.execution_state:
+                self.execution_state.checkpoint_task_completed(
+                    task_id=task_id,
+                    success=result.success,
+                    pr_url=result.pr_url,
+                    error=result.error,
+                    sub_agent_results=_build_sub_agent_records(result),
+                )
 
         self.state.current_task = ""
         return results
@@ -189,3 +208,25 @@ class TeamLead:
             qa_tester=qa_result,
             error="" if success else f"QATester failed: {qa_result.error}",
         )
+
+
+def _build_sub_agent_records(result: TaskResult) -> list[SubAgentRecord]:
+    """Convert TaskResult sub-agent data to SubAgentRecord list for persistence."""
+    from mycroft.server.worker.execution_state import SubAgentRecord
+
+    records: list[SubAgentRecord] = []
+    for agent_type, sub_result in [
+        ("code_writer", result.code_writer),
+        ("unit_tester", result.unit_tester),
+        ("qa_tester", result.qa_tester),
+    ]:
+        if sub_result is not None:
+            records.append(
+                SubAgentRecord(
+                    agent_type=agent_type,
+                    success=sub_result.success,
+                    output=sub_result.output[:2000],
+                    error=sub_result.error,
+                )
+            )
+    return records

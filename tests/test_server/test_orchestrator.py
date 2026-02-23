@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import pytest
 
+from mycroft.server.worker.execution_state import (
+    ExecutionState,
+    ServiceRecord,
+    TaskRecord,
+    TaskStatus,
+)
 from mycroft.server.worker.orchestrator import Orchestrator
 from mycroft.server.worker.sub_agents import SubAgentResult
 from mycroft.server.worker.team_lead import TeamLead
@@ -123,3 +129,137 @@ def _mock_all_sub_agents(monkeypatch):
     monkeypatch.setattr(
         "mycroft.server.worker.team_lead.run_qa_tester", _mock_success
     )
+
+
+class TestFromExecutionState:
+    def test_rebuilds_with_pending_tasks(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("mycroft.server.worker.orchestrator.manager.send", _mock_send)
+        monkeypatch.setattr(
+            "mycroft.server.worker.execution_state.settings.data_dir", tmp_path
+        )
+        (tmp_path / "projects" / "proj1").mkdir(parents=True)
+
+        exec_state = ExecutionState(project_id="proj1")
+        exec_state.tasks = {
+            "t1": TaskRecord(
+                task_id="t1", title="Done", service_name="auth",
+                status=TaskStatus.succeeded,
+            ),
+            "t2": TaskRecord(
+                task_id="t2", title="Pending", service_name="auth",
+                status=TaskStatus.pending,
+            ),
+            "t3": TaskRecord(
+                task_id="t3", title="Routes", service_name="api",
+                status=TaskStatus.pending,
+            ),
+        }
+        exec_state.services = {
+            "auth": ServiceRecord(
+                service_name="auth",
+                task_ids=["t1", "t2"],
+                completed_task_ids=["t1"],
+            ),
+            "api": ServiceRecord(
+                service_name="api", task_ids=["t3"],
+            ),
+        }
+        exec_state._recount()
+
+        orch = Orchestrator.from_execution_state(
+            exec_state,
+            repo_path=tmp_path,
+            claude_md="# CLAUDE.md",
+            business_spec="spec",
+        )
+
+        assert "auth" in orch._leads
+        assert "api" in orch._leads
+        # auth lead only has 1 pending task (t2), t1 is done
+        assert len(orch._leads["auth"].state.tasks) == 1
+        assert orch._leads["auth"].state.tasks[0]["id"] == "t2"
+        # api lead has 1 task
+        assert len(orch._leads["api"].state.tasks) == 1
+        # Counters
+        assert orch.state.succeeded == 1
+        assert orch.state.queued == 2  # t2 + t3
+        assert orch.state.total_tasks == 3  # 1 done + 2 queued
+
+    def test_skips_completed_services(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("mycroft.server.worker.orchestrator.manager.send", _mock_send)
+        monkeypatch.setattr(
+            "mycroft.server.worker.execution_state.settings.data_dir", tmp_path
+        )
+        (tmp_path / "projects" / "proj1").mkdir(parents=True)
+
+        exec_state = ExecutionState(project_id="proj1")
+        exec_state.tasks = {
+            "t1": TaskRecord(
+                task_id="t1", title="Done", service_name="auth",
+                status=TaskStatus.succeeded,
+            ),
+        }
+        exec_state.services = {
+            "auth": ServiceRecord(
+                service_name="auth",
+                task_ids=["t1"],
+                completed_task_ids=["t1"],
+            ),
+        }
+        exec_state._recount()
+
+        orch = Orchestrator.from_execution_state(
+            exec_state,
+            repo_path=tmp_path,
+            claude_md="# CLAUDE.md",
+            business_spec="spec",
+        )
+
+        # auth is fully complete — no Team Lead created
+        assert "auth" not in orch._leads
+        assert orch.state.succeeded == 1
+        assert orch.state.queued == 0
+
+    @pytest.mark.asyncio
+    async def test_from_execution_state_runs(self, tmp_path, monkeypatch):
+        """End-to-end: recover and run remaining tasks."""
+        monkeypatch.setattr("mycroft.server.worker.orchestrator.manager.send", _mock_send)
+        monkeypatch.setattr(
+            "mycroft.server.worker.execution_state.settings.data_dir", tmp_path
+        )
+        (tmp_path / "projects" / "proj1").mkdir(parents=True)
+        _mock_all_sub_agents(monkeypatch)
+
+        exec_state = ExecutionState(project_id="proj1")
+        exec_state.tasks = {
+            "t1": TaskRecord(
+                task_id="t1", title="Done", service_name="auth",
+                status=TaskStatus.succeeded,
+            ),
+            "t2": TaskRecord(
+                task_id="t2", title="Remaining", service_name="auth",
+                status=TaskStatus.pending,
+            ),
+        }
+        exec_state.services = {
+            "auth": ServiceRecord(
+                service_name="auth",
+                task_ids=["t1", "t2"],
+                completed_task_ids=["t1"],
+            ),
+        }
+        exec_state._recount()
+
+        orch = Orchestrator.from_execution_state(
+            exec_state,
+            repo_path=tmp_path,
+            claude_md="# CLAUDE.md",
+            business_spec="spec",
+        )
+
+        await orch.start()
+        results = await orch.wait()
+
+        assert "auth" in results
+        assert len(results["auth"]) == 1
+        assert results["auth"][0].success

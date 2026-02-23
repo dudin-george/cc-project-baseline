@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import pytest
 
+from mycroft.server.worker.execution_state import (
+    ExecutionState,
+    ServiceRecord,
+    TaskRecord,
+    TaskStatus,
+)
 from mycroft.server.worker.sub_agents import SubAgentResult
 from mycroft.server.worker.team_lead import TaskResult, TeamLead, TeamLeadState
 
@@ -116,3 +122,99 @@ def _mock_all_sub_agents_success(monkeypatch):
     monkeypatch.setattr(
         "mycroft.server.worker.team_lead.run_qa_tester", _mock_success
     )
+
+
+def _make_exec_state(tmp_path, monkeypatch):
+    """Create an ExecutionState wired up for team lead tests."""
+    monkeypatch.setattr(
+        "mycroft.server.worker.execution_state.settings.data_dir", tmp_path
+    )
+    (tmp_path / "projects" / "proj1").mkdir(parents=True, exist_ok=True)
+
+    state = ExecutionState(project_id="proj1")
+    state.tasks = {
+        "t1": TaskRecord(task_id="t1", title="User model", service_name="auth"),
+        "t2": TaskRecord(task_id="t2", title="Login endpoint", service_name="auth"),
+    }
+    state.services = {
+        "auth": ServiceRecord(service_name="auth", task_ids=["t1", "t2"]),
+    }
+    state._recount()
+    return state
+
+
+class TestTeamLeadCheckpointing:
+    @pytest.mark.asyncio
+    async def test_checkpoints_on_success(self, tmp_path, monkeypatch):
+        _mock_all_sub_agents_success(monkeypatch)
+        exec_state = _make_exec_state(tmp_path, monkeypatch)
+
+        lead = TeamLead(
+            project_id="proj1",
+            service_name="auth",
+            repo_path=tmp_path,
+            claude_md="# CLAUDE.md",
+            business_spec="spec",
+            tasks=[
+                {"id": "t1", "title": "User model", "description": "impl"},
+                {"id": "t2", "title": "Login endpoint", "description": "impl"},
+            ],
+            execution_state=exec_state,
+        )
+
+        results = await lead.run()
+        assert len(results) == 2
+        assert exec_state.tasks["t1"].status == TaskStatus.succeeded
+        assert exec_state.tasks["t2"].status == TaskStatus.succeeded
+        assert exec_state.succeeded == 2
+
+    @pytest.mark.asyncio
+    async def test_checkpoints_on_failure(self, tmp_path, monkeypatch):
+        exec_state = _make_exec_state(tmp_path, monkeypatch)
+
+        async def mock_code_writer_fail(*args, **kwargs):
+            return SubAgentResult(success=False, output="", error="compile error")
+
+        monkeypatch.setattr(
+            "mycroft.server.worker.team_lead.run_code_writer", mock_code_writer_fail
+        )
+        monkeypatch.setattr(
+            "mycroft.server.worker.team_lead.run_unit_tester", _mock_success
+        )
+        monkeypatch.setattr(
+            "mycroft.server.worker.team_lead.run_qa_tester", _mock_success
+        )
+
+        lead = TeamLead(
+            project_id="proj1",
+            service_name="auth",
+            repo_path=tmp_path,
+            claude_md="# CLAUDE.md",
+            business_spec="spec",
+            tasks=[{"id": "t1", "title": "User model", "description": "impl"}],
+            execution_state=exec_state,
+        )
+
+        results = await lead.run()
+        assert not results[0].success
+        assert exec_state.tasks["t1"].status == TaskStatus.failed
+        assert exec_state.failed == 1
+
+    @pytest.mark.asyncio
+    async def test_no_checkpoint_without_exec_state(self, tmp_path, monkeypatch):
+        """Team lead works normally without execution_state (backward compat)."""
+        _mock_all_sub_agents_success(monkeypatch)
+
+        lead = TeamLead(
+            project_id="proj1",
+            service_name="auth",
+            repo_path=tmp_path,
+            claude_md="# CLAUDE.md",
+            business_spec="spec",
+            tasks=[{"id": "t1", "title": "User model", "description": "impl"}],
+        )
+        assert lead.execution_state is None
+
+        results = await lead.run()
+        assert len(results) == 1
+        assert results[0].success

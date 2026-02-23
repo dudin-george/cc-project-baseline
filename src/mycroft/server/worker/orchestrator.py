@@ -6,12 +6,15 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mycroft.server.settings import settings
 from mycroft.server.worker.team_lead import TaskResult, TeamLead
 from mycroft.server.ws.connection_manager import manager
 from mycroft.shared.protocol import WorkerBatchUpdate, WorkerStatusUpdate
+
+if TYPE_CHECKING:
+    from mycroft.server.worker.execution_state import ExecutionState
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +32,13 @@ class OrchestratorState:
 class Orchestrator:
     """Manages all Team Leads for a project's execution phase."""
 
-    def __init__(self, project_id: str) -> None:
+    def __init__(
+        self,
+        project_id: str,
+        execution_state: ExecutionState | None = None,
+    ) -> None:
         self.project_id = project_id
+        self.execution_state = execution_state
         self._leads: dict[str, TeamLead] = {}
         self._tasks: dict[str, asyncio.Task[list[TaskResult]]] = {}
         self._semaphore = asyncio.Semaphore(settings.worker_max_concurrent_leads)
@@ -179,3 +187,59 @@ class Orchestrator:
             "blocked": self.state.blocked,
             "services": services,
         }
+
+    @classmethod
+    def from_execution_state(
+        cls,
+        execution_state: ExecutionState,
+        repo_path: Path,
+        claude_md: str,
+        business_spec: str,
+    ) -> Orchestrator:
+        """Rebuild an orchestrator from recovered execution state.
+
+        Only creates Team Leads for services that still have pending tasks.
+        Completed tasks are skipped. Counters are restored from the checkpoint.
+        """
+        from mycroft.server.worker.execution_state import TaskStatus
+
+        orch = cls(execution_state.project_id, execution_state=execution_state)
+        orch.state.succeeded = execution_state.succeeded
+
+        for svc_name, svc_record in execution_state.services.items():
+            # Build the task list from only pending tasks
+            pending_ids = execution_state.get_pending_task_ids(svc_name)
+            if not pending_ids:
+                continue  # service fully completed, skip
+
+            tasks: list[dict[str, Any]] = []
+            for tid in pending_ids:
+                task_rec = execution_state.tasks[tid]
+                tasks.append({
+                    "id": task_rec.task_id,
+                    "title": task_rec.title,
+                    "description": "",  # description not stored in checkpoint
+                })
+
+            lead = TeamLead(
+                project_id=execution_state.project_id,
+                service_name=svc_name,
+                repo_path=repo_path,
+                claude_md=claude_md,
+                business_spec=business_spec,
+                tasks=tasks,
+                execution_state=execution_state,
+            )
+            orch.add_team_lead(lead)
+
+        # Fix counters: add_team_lead already set total_tasks/queued for pending.
+        # We need to also account for already-succeeded tasks in the total.
+        orch.state.total_tasks += execution_state.succeeded + execution_state.failed
+
+        logger.info(
+            "Rebuilt orchestrator from checkpoint: %d total, %d succeeded, %d queued",
+            orch.state.total_tasks,
+            orch.state.succeeded,
+            orch.state.queued,
+        )
+        return orch

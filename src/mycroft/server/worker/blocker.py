@@ -8,13 +8,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mycroft.server.linear.client import LinearClient
 from mycroft.server.linear.models import LinearIssueCreateInput
 from mycroft.server.settings import settings
 from mycroft.server.ws.connection_manager import manager
 from mycroft.shared.protocol import BlockerNotification
+
+if TYPE_CHECKING:
+    from mycroft.server.worker.execution_state import ExecutionState
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,7 @@ async def create_blocker(
     service_name: str,
     question: str,
     context: str = "",
+    execution_state: ExecutionState | None = None,
 ) -> PendingBlocker:
     """Create a blocker: Linear issue + pause mechanism.
 
@@ -102,6 +106,15 @@ async def create_blocker(
     )
     _blockers[blocker_id] = blocker
 
+    if execution_state:
+        execution_state.checkpoint_blocker_created(
+            blocker_id=blocker_id,
+            service_name=service_name,
+            question=question,
+            linear_issue_id=linear_issue_id,
+            linear_issue_url=linear_issue_url,
+        )
+
     # Notify client
     await manager.send(
         project_id,
@@ -122,7 +135,11 @@ async def create_blocker(
     return blocker
 
 
-def resolve_blocker(blocker_id: str, answer: str) -> bool:
+def resolve_blocker(
+    blocker_id: str,
+    answer: str,
+    execution_state: ExecutionState | None = None,
+) -> bool:
     """Resolve a blocker with the user's answer. Returns True if found."""
     blocker = _blockers.get(blocker_id)
     if blocker is None:
@@ -131,6 +148,10 @@ def resolve_blocker(blocker_id: str, answer: str) -> bool:
 
     blocker.answer = answer
     blocker.event.set()
+
+    if execution_state:
+        execution_state.checkpoint_blocker_resolved(blocker_id, answer)
+
     logger.info("Resolved blocker %s with answer: %s", blocker_id, answer[:100])
     return True
 
@@ -152,3 +173,25 @@ def cleanup_blocker(blocker_id: str) -> None:
 def clear_all_blockers() -> None:
     """Clear all blockers (used in tests and shutdown)."""
     _blockers.clear()
+
+
+def restore_blockers_from_state(execution_state: ExecutionState) -> list[PendingBlocker]:
+    """Recreate in-memory PendingBlocker objects from unresolved BlockerRecords.
+
+    Used during recovery to restore the blocker registry so that
+    resolve_blocker / resolve_blocker_by_linear_issue still work.
+    """
+    restored: list[PendingBlocker] = []
+    for record in execution_state.blockers.values():
+        if record.resolved:
+            continue
+        blocker = PendingBlocker(
+            blocker_id=record.blocker_id,
+            service_name=record.service_name,
+            question=record.question,
+            linear_issue_id=record.linear_issue_id,
+            linear_issue_url=record.linear_issue_url,
+        )
+        _blockers[record.blocker_id] = blocker
+        restored.append(blocker)
+    return restored
