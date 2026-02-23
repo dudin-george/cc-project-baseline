@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from mycroft.server.settings import settings
 from mycroft.server.ws.handler import websocket_endpoint
+from mycroft.server.linear.webhook import router as linear_webhook_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,6 +17,7 @@ logging.basicConfig(
 )
 
 app = FastAPI(title="Mycroft Server", version="0.1.0")
+app.include_router(linear_webhook_router)
 
 
 @app.websocket("/ws")

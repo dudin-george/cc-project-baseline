@@ -140,6 +140,8 @@ async def _handle_message(ws: WebSocket, project: ProjectState, msg: Any) -> Non
         await _handle_command(ws, project, msg.name, msg.args)
     elif msg.type == "confirm_response":
         await _handle_confirm_response(project, msg)
+    elif msg.type == "worker_command":
+        await _handle_worker_command(project, msg)
     elif msg.type == "pong":
         pass  # heartbeat ack
 
@@ -224,3 +226,22 @@ async def _handle_command(
 async def _handle_confirm_response(project: ProjectState, msg: ConfirmResponse) -> None:
     from mycroft.server.agents.tools.user_confirm import resolve_confirm
     resolve_confirm(project.project_id, msg.confirm_id, msg.approved, msg.comment)
+
+
+async def _handle_worker_command(project: ProjectState, msg: Any) -> None:
+    """Route worker commands to the orchestrator (if active)."""
+    from mycroft.server.worker.orchestrator import Orchestrator
+
+    # Orchestrator instances are managed by the execution dashboard agent.
+    # This handler provides a direct command path for the client.
+    action = msg.action
+    logger.info("Worker command: %s for project %s", action, project.project_id)
+
+    # The actual orchestrator reference will be set up during Phase 6 integration.
+    # For now, log the command. The execution dashboard agent handles routing.
+    await manager.send(
+        project.project_id,
+        ErrorMessage(
+            message=f"Worker command '{action}' received. Use the execution dashboard (step 5) to manage workers.",
+        ),
+    )
