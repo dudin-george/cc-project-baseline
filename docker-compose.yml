@@ -1,13 +1,39 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    env_file:
+      - .env
+    depends_on:
+      - server
+    restart: unless-stopped
+
   server:
     build: .
-    ports:
-      - "8765:8765"
+    expose:
+      - "8765"
     volumes:
       - server-data:/app/data
     env_file:
       - .env
     restart: unless-stopped
+
+  client:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      - server
+    profiles:
+      - client
+    stdin_open: true
+    tty: true
 
   test:
     build: .
@@ -30,3 +56,5 @@ services:
 
 volumes:
   server-data:
+  caddy-data:
+  caddy-config:
