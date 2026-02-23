@@ -1,0 +1,45 @@
+# Security-sensitive paths that require human PR review.
+# PRs modifying files matching these patterns get the "security-review-required" label
+# instead of "auto-merge".
+
+[security]
+# Patterns (glob-style) for files that need manual review.
+paths = [
+    # Authentication and authorization
+    "**/auth/**",
+    "**/middleware/auth*",
+    "**/jwt*",
+    "**/oauth*",
+    "**/session*",
+    "**/password*",
+
+    # Security configuration
+    "**/.env*",
+    "**/secrets*",
+    "**/credentials*",
+    "**/*secret*",
+    "**/*token*",
+
+    # Infrastructure and deployment
+    "**/Dockerfile*",
+    "**/docker-compose*",
+    "**/.github/workflows/**",
+    "**/nginx*",
+    "**/Caddyfile",
+
+    # Database migrations
+    "**/migrations/**",
+    "**/alembic/**",
+
+    # Package management
+    "**/requirements*.txt",
+    "**/pyproject.toml",
+    "**/package.json",
+    "**/package-lock.json",
+
+    # Core security files
+    "**/cors*",
+    "**/csrf*",
+    "**/rate_limit*",
+    "**/encryption*",
+]
