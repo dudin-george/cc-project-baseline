@@ -1,0 +1,6 @@
+# Mycroft Client Configuration
+# Override with environment variables prefixed with MYCROFT_CLIENT_
+
+[connection]
+server_url = "ws://localhost:8765/ws"
+# api_key = ""  # Set via MYCROFT_CLIENT_API_KEY env var

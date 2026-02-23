@@ -1,0 +1,21 @@
+# Mycroft Server Configuration
+# Override with environment variables prefixed with MYCROFT_
+
+[server]
+host = "0.0.0.0"
+port = 8765
+
+[anthropic]
+# api_key = ""  # Set via MYCROFT_ANTHROPIC_API_KEY env var
+model = "claude-sonnet-4-20250514"
+max_tokens = 8192
+
+[tavily]
+# api_key = ""  # Set via MYCROFT_TAVILY_API_KEY env var
+
+[git]
+# docs_repo_url = ""  # Set via MYCROFT_DOCS_REPO_URL env var
+# docs_repo_local_path = "./data/docs-repo"
+
+[auth]
+# api_keys = []  # Empty = open access (dev mode)
