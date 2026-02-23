@@ -93,6 +93,11 @@ def _remove_step_documents(project: ProjectState, step_id: StepId) -> None:
         StepId.USE_CASES_AUTO: ["01-use-cases.md", "01-use-case-diagram.mmd"],
         StepId.ARCHITECTURE_MANUAL: ["02-architecture.md"],
         StepId.ARCHITECTURE_AUTO: ["02-architecture.md"],
+        StepId.PROJECT_SETUP: [],
+        StepId.C4_DESIGN: [],
+        StepId.WORK_PLANNING: [],
+        StepId.EXECUTION: [],
+        StepId.E2E_TESTING: [],
     }
 
     for filename in doc_map.get(step_id, []):
@@ -103,6 +108,13 @@ def _remove_step_documents(project: ProjectState, step_id: StepId) -> None:
         services_dir = docs_dir / "services"
         if services_dir.exists():
             for f in services_dir.iterdir():
+                f.unlink()
+
+    # Remove C4 Level 4 design docs for step 3.2
+    if step_id == StepId.C4_DESIGN:
+        design_dir = docs_dir / "03-design"
+        if design_dir.exists():
+            for f in design_dir.iterdir():
                 f.unlink()
 
 
@@ -119,6 +131,11 @@ def get_step_documents(project: ProjectState, step_id: StepId) -> dict[str, str]
         StepId.USE_CASES_AUTO: ["01-use-cases.md", "01-use-case-diagram.mmd"],
         StepId.ARCHITECTURE_MANUAL: ["02-architecture.md"],
         StepId.ARCHITECTURE_AUTO: ["02-architecture.md"],
+        StepId.PROJECT_SETUP: [],
+        StepId.C4_DESIGN: [],
+        StepId.WORK_PLANNING: [],
+        StepId.EXECUTION: [],
+        StepId.E2E_TESTING: [],
     }
 
     for filename in doc_map.get(step_id, []):
@@ -133,6 +150,14 @@ def get_step_documents(project: ProjectState, step_id: StepId) -> dict[str, str]
             for f in sorted(services_dir.iterdir()):
                 if f.suffix == ".md":
                     result[f"services/{f.name}"] = f.read_text()
+
+    # Include C4 Level 4 design docs for 3.2
+    if step_id == StepId.C4_DESIGN:
+        design_dir = docs_dir / "03-design"
+        if design_dir.exists():
+            for f in sorted(design_dir.iterdir()):
+                if f.suffix == ".md":
+                    result[f"03-design/{f.name}"] = f.read_text()
 
     return result
 

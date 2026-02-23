@@ -17,6 +17,11 @@ class StepId(str, enum.Enum):
     USE_CASES_AUTO = "1.2"
     ARCHITECTURE_MANUAL = "2.1"
     ARCHITECTURE_AUTO = "2.2"
+    PROJECT_SETUP = "3.1"
+    C4_DESIGN = "3.2"
+    WORK_PLANNING = "4"
+    EXECUTION = "5"
+    E2E_TESTING = "6"
 
 
 class StepStatus(str, enum.Enum):
@@ -31,6 +36,11 @@ STEP_ORDER: list[StepId] = [
     StepId.USE_CASES_AUTO,
     StepId.ARCHITECTURE_MANUAL,
     StepId.ARCHITECTURE_AUTO,
+    StepId.PROJECT_SETUP,
+    StepId.C4_DESIGN,
+    StepId.WORK_PLANNING,
+    StepId.EXECUTION,
+    StepId.E2E_TESTING,
 ]
 
 
@@ -65,7 +75,18 @@ class PongMessage(BaseModel):
     type: Literal["pong"] = "pong"
 
 
-ClientMessage = AuthMessage | UserMessage | CommandMessage | ConfirmResponse | PongMessage
+class WorkerCommand(BaseModel):
+    type: Literal["worker_command"] = "worker_command"
+    action: Literal[
+        "pause_all", "resume_all", "retry", "cancel", "pause_service", "resume_service"
+    ]
+    task_id: str | None = None
+    service_name: str | None = None
+
+
+ClientMessage = (
+    AuthMessage | UserMessage | CommandMessage | ConfirmResponse | PongMessage | WorkerCommand
+)
 
 
 def parse_client_message(data: dict[str, Any]) -> ClientMessage:
@@ -75,6 +96,7 @@ def parse_client_message(data: dict[str, Any]) -> ClientMessage:
         "command": CommandMessage,
         "confirm_response": ConfirmResponse,
         "pong": PongMessage,
+        "worker_command": WorkerCommand,
     }
     msg_type = data.get("type")
     if msg_type not in type_map:
@@ -155,6 +177,37 @@ class ErrorMessage(BaseModel):
     recoverable: bool = True
 
 
+class WorkerStatusUpdate(BaseModel):
+    type: Literal["worker_status"] = "worker_status"
+    task_id: str
+    task_title: str
+    service_name: str
+    worker_id: str
+    status: Literal["queued", "running", "pr_opened", "succeeded", "failed", "retrying"]
+    pr_url: str | None = None
+    error: str | None = None
+    progress: str = ""
+
+
+class WorkerBatchUpdate(BaseModel):
+    type: Literal["worker_batch"] = "worker_batch"
+    total_tasks: int
+    queued: int = 0
+    running: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    blocked: int = 0
+
+
+class BlockerNotification(BaseModel):
+    type: Literal["blocker_notification"] = "blocker_notification"
+    blocker_id: str
+    service_name: str
+    question: str
+    linear_issue_url: str = ""
+    resolved: bool = False
+
+
 ServerMessage = (
     AuthResult
     | StateSyncMessage
@@ -167,6 +220,9 @@ ServerMessage = (
     | StepTransition
     | PingMessage
     | ErrorMessage
+    | WorkerStatusUpdate
+    | WorkerBatchUpdate
+    | BlockerNotification
 )
 
 
@@ -183,6 +239,9 @@ def parse_server_message(data: dict[str, Any]) -> ServerMessage:
         "step_transition": StepTransition,
         "ping": PingMessage,
         "error": ErrorMessage,
+        "worker_status": WorkerStatusUpdate,
+        "worker_batch": WorkerBatchUpdate,
+        "blocker_notification": BlockerNotification,
     }
     msg_type = data.get("type")
     if msg_type not in type_map:

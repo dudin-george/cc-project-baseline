@@ -13,6 +13,7 @@ class ServerSettings(BaseSettings):
         env_prefix="MYCROFT_",
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     # Anthropic
@@ -34,6 +35,27 @@ class ServerSettings(BaseSettings):
 
     # State storage
     data_dir: Path = Path("./data")
+
+    # Linear
+    linear_api_key: str = ""
+    linear_webhook_secret: str = ""
+    linear_team_id: str = ""
+    linear_api_url: str = "https://api.linear.app/graphql"
+
+    # GitHub
+    github_token: str = ""
+    github_org: str = ""
+    template_repo: str = ""  # e.g. "org/project-template"
+
+    # Workers
+    worker_max_concurrent_leads: int = 3
+    worker_max_concurrent_agents: int = 2
+    worker_max_turns: int = 25
+    worker_max_budget_usd: float = 5.0
+    worker_retry_count: int = 1
+
+    # Claude Agent SDK
+    claude_sdk_model: str = "claude-sonnet-4-20250514"
 
     @property
     def projects_dir(self) -> Path:

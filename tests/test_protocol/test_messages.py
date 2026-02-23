@@ -8,12 +8,16 @@ from mycroft.shared.protocol import (
     CommandMessage,
     ConfirmResponse,
     PongMessage,
+    WorkerCommand,
     AuthResult,
     StateSyncMessage,
     TextDelta,
     ConfirmRequest,
     ErrorMessage,
     StepTransition,
+    WorkerStatusUpdate,
+    WorkerBatchUpdate,
+    BlockerNotification,
     StepId,
     StepStatus,
     StepState,
@@ -25,11 +29,16 @@ from mycroft.shared.protocol import (
 
 class TestStepOrder:
     def test_step_order_length(self):
-        assert len(STEP_ORDER) == 5
+        assert len(STEP_ORDER) == 10
 
     def test_step_order_values(self):
         assert STEP_ORDER[0] == StepId.IDEA_SCOPING
-        assert STEP_ORDER[-1] == StepId.ARCHITECTURE_AUTO
+        assert STEP_ORDER[4] == StepId.ARCHITECTURE_AUTO
+        assert STEP_ORDER[5] == StepId.PROJECT_SETUP
+        assert STEP_ORDER[6] == StepId.C4_DESIGN
+        assert STEP_ORDER[7] == StepId.WORK_PLANNING
+        assert STEP_ORDER[8] == StepId.EXECUTION
+        assert STEP_ORDER[-1] == StepId.E2E_TESTING
 
 
 class TestParseClientMessage:
@@ -171,3 +180,109 @@ class TestMessageRoundtrip:
         data = original.model_dump()
         parsed = parse_server_message(data)
         assert parsed == original
+
+
+class TestWorkerCommand:
+    def test_parse(self):
+        msg = parse_client_message(
+            {"type": "worker_command", "action": "pause_all"}
+        )
+        assert isinstance(msg, WorkerCommand)
+        assert msg.action == "pause_all"
+        assert msg.task_id is None
+        assert msg.service_name is None
+
+    def test_with_service(self):
+        msg = parse_client_message(
+            {"type": "worker_command", "action": "pause_service", "service_name": "auth"}
+        )
+        assert msg.service_name == "auth"
+
+    def test_roundtrip(self):
+        original = WorkerCommand(action="retry", task_id="t1")
+        data = original.model_dump()
+        parsed = parse_client_message(data)
+        assert parsed == original
+
+
+class TestWorkerStatusUpdate:
+    def test_parse(self):
+        msg = parse_server_message(
+            {
+                "type": "worker_status",
+                "task_id": "t1",
+                "task_title": "Login endpoint",
+                "service_name": "auth",
+                "worker_id": "w1",
+                "status": "running",
+            }
+        )
+        assert isinstance(msg, WorkerStatusUpdate)
+        assert msg.status == "running"
+        assert msg.pr_url is None
+        assert msg.progress == ""
+
+    def test_with_pr(self):
+        msg = parse_server_message(
+            {
+                "type": "worker_status",
+                "task_id": "t1",
+                "task_title": "Login endpoint",
+                "service_name": "auth",
+                "worker_id": "w1",
+                "status": "pr_opened",
+                "pr_url": "https://github.com/org/repo/pull/1",
+            }
+        )
+        assert msg.pr_url == "https://github.com/org/repo/pull/1"
+
+
+class TestWorkerBatchUpdate:
+    def test_parse(self):
+        msg = parse_server_message(
+            {
+                "type": "worker_batch",
+                "total_tasks": 10,
+                "queued": 3,
+                "running": 2,
+                "succeeded": 4,
+                "failed": 1,
+            }
+        )
+        assert isinstance(msg, WorkerBatchUpdate)
+        assert msg.total_tasks == 10
+        assert msg.blocked == 0
+
+    def test_roundtrip(self):
+        original = WorkerBatchUpdate(total_tasks=5, running=2, succeeded=3)
+        data = original.model_dump()
+        parsed = parse_server_message(data)
+        assert parsed == original
+
+
+class TestBlockerNotification:
+    def test_parse(self):
+        msg = parse_server_message(
+            {
+                "type": "blocker_notification",
+                "blocker_id": "b1",
+                "service_name": "auth",
+                "question": "Which OAuth provider?",
+            }
+        )
+        assert isinstance(msg, BlockerNotification)
+        assert msg.resolved is False
+        assert msg.linear_issue_url == ""
+
+    def test_resolved(self):
+        msg = parse_server_message(
+            {
+                "type": "blocker_notification",
+                "blocker_id": "b1",
+                "service_name": "auth",
+                "question": "Which OAuth provider?",
+                "resolved": True,
+                "linear_issue_url": "https://linear.app/issue/ABC-123",
+            }
+        )
+        assert msg.resolved is True

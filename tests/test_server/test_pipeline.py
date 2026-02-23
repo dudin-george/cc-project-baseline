@@ -48,7 +48,7 @@ class TestAdvance:
         # Advance to last step
         for _ in range(len(STEP_ORDER) - 1):
             advance(p)
-        assert p.current_step == StepId.ARCHITECTURE_AUTO
+        assert p.current_step == StepId.E2E_TESTING
         with pytest.raises(PipelineError, match="last step"):
             advance(p)
 
@@ -138,6 +138,7 @@ class TestPermanentLock:
     def test_back_past_permanent_lock_rejected(self):
         p = make_project()
         self._advance_to_end(p)
+        assert p.current_step == StepId.E2E_TESTING
         # Manually permanently lock step 2.2
         p.steps[StepId.ARCHITECTURE_AUTO].status = StepStatus.PERMANENTLY_LOCKED
         p.save()
