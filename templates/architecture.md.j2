@@ -1,0 +1,24 @@
+# {{ project_name }} — System Architecture
+
+## Overview
+{{ overview }}
+
+## Services
+{% for svc in services %}
+### {{ svc.name }}
+- **Purpose**: {{ svc.purpose }}
+- **Technology**: {{ svc.technology }}
+- **Spec**: [{{ svc.spec_file }}](services/{{ svc.spec_file }})
+{% endfor %}
+
+## Communication Patterns
+{{ communication_patterns }}
+
+## Data Flow
+{{ data_flow }}
+
+## Infrastructure
+{{ infrastructure }}
+
+## Security Considerations
+{{ security }}

@@ -1,0 +1,37 @@
+# {{ project_name }} — Use Cases
+
+{% for uc in use_cases %}
+## UC-{{ loop.index }}: {{ uc.title }}
+
+**Complexity**: {{ uc.complexity }}/3 | **Necessity**: {{ uc.necessity }}/3 | **Priority**: {{ uc.priority }}
+
+### Description
+{{ uc.description }}
+
+### Actors
+{% for actor in uc.actors %}
+- {{ actor }}
+{% endfor %}
+
+### Preconditions
+{% for pre in uc.preconditions %}
+- {{ pre }}
+{% endfor %}
+
+### Main Flow
+{% for step in uc.main_flow %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+
+### Alternative Flows
+{% for alt in uc.alternative_flows %}
+- {{ alt }}
+{% endfor %}
+
+### Postconditions
+{% for post in uc.postconditions %}
+- {{ post }}
+{% endfor %}
+
+---
+{% endfor %}

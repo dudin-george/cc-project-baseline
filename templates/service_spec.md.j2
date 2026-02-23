@@ -1,0 +1,37 @@
+# Service: {{ service_name }}
+
+## Purpose
+{{ purpose }}
+
+## Data Models
+{% for model in data_models %}
+### {{ model.name }}
+```
+{{ model.schema }}
+```
+{% endfor %}
+
+## API Endpoints
+{% for ep in endpoints %}
+### {{ ep.method }} {{ ep.path }}
+- **Description**: {{ ep.description }}
+- **Request**: {{ ep.request }}
+- **Response**: {{ ep.response }}
+- **Errors**: {{ ep.errors }}
+{% endfor %}
+
+## Business Logic
+{{ business_logic }}
+
+## Corner Cases
+{% for cc in corner_cases %}
+- {{ cc }}
+{% endfor %}
+
+## Integrations
+{% for integ in integrations %}
+- **{{ integ.service }}**: {{ integ.description }}
+{% endfor %}
+
+## Error Handling
+{{ error_handling }}

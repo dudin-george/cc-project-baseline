@@ -1,0 +1,30 @@
+# {{ project_name }} — Idea Document
+
+## Problem Statement
+{{ problem_statement }}
+
+## Target Users
+{{ target_users }}
+
+## Proposed Solution
+{{ proposed_solution }}
+
+## Key Differentiators
+{{ differentiators }}
+
+## Competitor Analysis
+{% for comp in competitors %}
+### {{ comp.name }}
+- **URL**: {{ comp.url }}
+- **Description**: {{ comp.description }}
+- **Strengths**: {{ comp.strengths }}
+- **Weaknesses**: {{ comp.weaknesses }}
+{% endfor %}
+
+## Open Questions
+{% for q in open_questions %}
+- {{ q }}
+{% endfor %}
+
+## Notes
+{{ notes }}
