@@ -46,7 +46,15 @@ async def app(scope, receive, send):
             rpath = getattr(route, "path", "N/A")
             match_result, _ = route.matches(scope)
             logger.info("Route %s path=%s match=%s", rtype, rpath, match_result)
-    await _inner_app(scope, receive, send)
+    async def debug_send(message):
+        logger.info("ASGI send: type=%s message=%s", message.get("type"), message)
+        await send(message)
+
+    try:
+        await _inner_app(scope, receive, debug_send)
+    except Exception as e:
+        logger.error("ASGI exception: %s: %s", type(e).__name__, e, exc_info=True)
+        raise
 
 
 
