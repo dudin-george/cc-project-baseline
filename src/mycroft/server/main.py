@@ -40,6 +40,12 @@ async def app(scope, receive, send):
     if scope["type"] == "websocket":
         headers = dict(scope.get("headers", []))
         logger.info("WS headers: %s", {k.decode(): v.decode() for k, v in headers.items()})
+        # Debug: check routes
+        for route in _inner_app.routes:
+            rtype = type(route).__name__
+            rpath = getattr(route, "path", "N/A")
+            match_result, _ = route.matches(scope)
+            logger.info("Route %s path=%s match=%s", rtype, rpath, match_result)
     await _inner_app(scope, receive, send)
 
 
