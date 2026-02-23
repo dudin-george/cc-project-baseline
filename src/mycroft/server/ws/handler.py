@@ -230,18 +230,69 @@ async def _handle_confirm_response(project: ProjectState, msg: ConfirmResponse) 
 
 async def _handle_worker_command(project: ProjectState, msg: Any) -> None:
     """Route worker commands to the orchestrator (if active)."""
-    from mycroft.server.worker.orchestrator import Orchestrator
+    from mycroft.server.agents.execution_dashboard import get_orchestrator
 
-    # Orchestrator instances are managed by the execution dashboard agent.
-    # This handler provides a direct command path for the client.
     action = msg.action
     logger.info("Worker command: %s for project %s", action, project.project_id)
 
-    # The actual orchestrator reference will be set up during Phase 6 integration.
-    # For now, log the command. The execution dashboard agent handles routing.
+    orchestrator = get_orchestrator(project.project_id)
+    if orchestrator is None:
+        await manager.send(
+            project.project_id,
+            ErrorMessage(message="No active execution for this project."),
+        )
+        return
+
+    if action == "pause_all":
+        orchestrator.pause_all()
+    elif action == "resume_all":
+        orchestrator.resume_all()
+    elif action == "pause_service":
+        if not msg.service_name:
+            await manager.send(
+                project.project_id,
+                ErrorMessage(message="pause_service requires a service_name."),
+            )
+            return
+        if not orchestrator.pause_service(msg.service_name):
+            await manager.send(
+                project.project_id,
+                ErrorMessage(message=f"Service '{msg.service_name}' not found."),
+            )
+            return
+    elif action == "resume_service":
+        if not msg.service_name:
+            await manager.send(
+                project.project_id,
+                ErrorMessage(message="resume_service requires a service_name."),
+            )
+            return
+        if not orchestrator.resume_service(msg.service_name):
+            await manager.send(
+                project.project_id,
+                ErrorMessage(message=f"Service '{msg.service_name}' not found."),
+            )
+            return
+    elif action == "cancel":
+        await orchestrator.shutdown()
+    else:
+        await manager.send(
+            project.project_id,
+            ErrorMessage(message=f"Unknown worker action: {action}"),
+        )
+        return
+
+    # Send batch status after each successful action
+    from mycroft.shared.protocol import WorkerBatchUpdate
+
     await manager.send(
         project.project_id,
-        ErrorMessage(
-            message=f"Worker command '{action}' received. Use the execution dashboard (step 5) to manage workers.",
+        WorkerBatchUpdate(
+            total_tasks=orchestrator.state.total_tasks,
+            queued=orchestrator.state.queued,
+            running=orchestrator.state.running,
+            succeeded=orchestrator.state.succeeded,
+            failed=orchestrator.state.failed,
+            blocked=orchestrator.state.blocked,
         ),
     )

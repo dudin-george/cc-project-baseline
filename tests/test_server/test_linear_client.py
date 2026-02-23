@@ -96,6 +96,133 @@ class TestCreateIssue:
         await client.close()
 
 
+class TestGetIssue:
+    @pytest.mark.asyncio
+    async def test_success(self, monkeypatch):
+        client = LinearClient(api_key="test-key", api_url="https://test.linear.app/graphql")
+        resp = _mock_response({
+            "issue": {
+                "id": "i1",
+                "identifier": "ABC-1",
+                "title": "Test Issue",
+                "description": "Some description",
+                "url": "https://linear.app/issue/ABC-1",
+                "stateId": "s1",
+                "priority": 2,
+                "parentId": None,
+                "labels": {"nodes": [{"id": "l1", "name": "bug"}, {"id": "l2", "name": "urgent"}]},
+            }
+        })
+        monkeypatch.setattr(
+            httpx.AsyncClient, "post", lambda self, *a, **kw: _async_return(resp)
+        )
+        issue = await client.get_issue("i1")
+        assert issue.id == "i1"
+        assert issue.identifier == "ABC-1"
+        assert issue.description == "Some description"
+        assert len(issue.labels) == 2
+        assert issue.labels[0].name == "bug"
+        assert issue.labels[1].name == "urgent"
+        await client.close()
+
+
+class TestListProjectIssues:
+    @pytest.mark.asyncio
+    async def test_single_page(self, monkeypatch):
+        client = LinearClient(api_key="test-key", api_url="https://test.linear.app/graphql")
+        resp = _mock_response({
+            "project": {
+                "issues": {
+                    "nodes": [
+                        {
+                            "id": "i1", "identifier": "ABC-1", "title": "Story 1",
+                            "url": "", "stateId": "s1", "priority": 0, "parentId": None,
+                            "description": "", "labels": {"nodes": []},
+                        },
+                        {
+                            "id": "i2", "identifier": "ABC-2", "title": "Task 1",
+                            "url": "", "stateId": "s1", "priority": 0, "parentId": "i1",
+                            "description": "", "labels": {"nodes": []},
+                        },
+                    ],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        })
+        monkeypatch.setattr(
+            httpx.AsyncClient, "post", lambda self, *a, **kw: _async_return(resp)
+        )
+        issues = await client.list_project_issues("proj1")
+        assert len(issues) == 2
+        assert issues[0].id == "i1"
+        assert issues[0].parent_id is None
+        assert issues[1].parent_id == "i1"
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_pagination(self, monkeypatch):
+        client = LinearClient(api_key="test-key", api_url="https://test.linear.app/graphql")
+        call_count = {"n": 0}
+
+        async def mock_post(self, *args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return _mock_response({
+                    "project": {
+                        "issues": {
+                            "nodes": [
+                                {
+                                    "id": "i1", "identifier": "ABC-1", "title": "Issue 1",
+                                    "url": "", "stateId": "s1", "priority": 0, "parentId": None,
+                                    "description": "", "labels": {"nodes": []},
+                                },
+                            ],
+                            "pageInfo": {"hasNextPage": True, "endCursor": "cursor1"},
+                        }
+                    }
+                })
+            return _mock_response({
+                "project": {
+                    "issues": {
+                        "nodes": [
+                            {
+                                "id": "i2", "identifier": "ABC-2", "title": "Issue 2",
+                                "url": "", "stateId": "s1", "priority": 0, "parentId": None,
+                                "description": "", "labels": {"nodes": []},
+                            },
+                        ],
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    }
+                }
+            })
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+        issues = await client.list_project_issues("proj1")
+        assert len(issues) == 2
+        assert issues[0].id == "i1"
+        assert issues[1].id == "i2"
+        assert call_count["n"] == 2
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_empty(self, monkeypatch):
+        client = LinearClient(api_key="test-key", api_url="https://test.linear.app/graphql")
+        resp = _mock_response({
+            "project": {
+                "issues": {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        })
+        monkeypatch.setattr(
+            httpx.AsyncClient, "post", lambda self, *a, **kw: _async_return(resp)
+        )
+        issues = await client.list_project_issues("proj1")
+        assert issues == []
+        await client.close()
+
+
 class TestUpdateIssueState:
     @pytest.mark.asyncio
     async def test_success(self, monkeypatch):

@@ -139,3 +139,58 @@ class TestHandlerRegistration:
         payload = {"action": "create", "type": "Issue", "data": {}}
         resp = client.post("/webhooks/linear", json=payload)
         assert resp.status_code == 200
+
+
+class TestCommentBlockerWebhook:
+    """Test that comment webhooks resolve blockers via blocker_webhook handler."""
+
+    def test_comment_resolves_blocker(self, client, monkeypatch):
+        monkeypatch.setattr("mycroft.server.linear.webhook.settings.linear_webhook_secret", "")
+
+        from mycroft.server.worker.blocker import PendingBlocker, _blockers, clear_all_blockers
+        # Import the handler module to register its handler
+        import mycroft.server.linear.blocker_webhook  # noqa: F401
+
+        clear_all_blockers()
+        try:
+            # Set up a pending blocker with a known linear_issue_id
+            blocker = PendingBlocker(
+                blocker_id="b1",
+                service_name="auth",
+                question="How to handle OAuth?",
+                linear_issue_id="issue-123",
+            )
+            _blockers["b1"] = blocker
+
+            # POST a comment webhook for that issue
+            payload = {
+                "action": "create",
+                "type": "Comment",
+                "data": {"issueId": "issue-123", "body": "Use JWT tokens instead."},
+            }
+            resp = client.post("/webhooks/linear", json=payload)
+            assert resp.status_code == 200
+
+            # Blocker should be resolved
+            assert blocker.event.is_set()
+            assert blocker.answer == "Use JWT tokens instead."
+        finally:
+            clear_all_blockers()
+
+    def test_comment_no_matching_blocker(self, client, monkeypatch):
+        monkeypatch.setattr("mycroft.server.linear.webhook.settings.linear_webhook_secret", "")
+
+        from mycroft.server.worker.blocker import clear_all_blockers
+        import mycroft.server.linear.blocker_webhook  # noqa: F401
+
+        clear_all_blockers()
+        try:
+            payload = {
+                "action": "create",
+                "type": "Comment",
+                "data": {"issueId": "unknown-issue", "body": "Some comment"},
+            }
+            resp = client.post("/webhooks/linear", json=payload)
+            assert resp.status_code == 200  # no error, just no match
+        finally:
+            clear_all_blockers()

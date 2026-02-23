@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from mycroft.server.settings import settings
 from mycroft.server.ws.handler import websocket_endpoint
 from mycroft.server.linear.webhook import router as linear_webhook_router
+import mycroft.server.linear.blocker_webhook  # noqa: F401 — registers handler
 
 logging.basicConfig(
     level=logging.INFO,

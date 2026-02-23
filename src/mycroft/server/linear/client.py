@@ -165,6 +165,61 @@ class LinearClient:
             labels=labels,
         )
 
+    async def list_project_issues(self, project_id: str) -> list[LinearIssue]:
+        """Fetch all issues belonging to a Linear project (paginated)."""
+        query = """
+        query($id: String!, $cursor: String) {
+            project(id: $id) {
+                issues(first: 50, after: $cursor) {
+                    nodes {
+                        id identifier title url stateId priority parentId
+                        description
+                        labels { nodes { id name } }
+                    }
+                    pageInfo { hasNextPage endCursor }
+                }
+            }
+        }
+        """
+        all_issues: list[LinearIssue] = []
+        cursor: str | None = None
+
+        while True:
+            variables: dict[str, Any] = {"id": project_id}
+            if cursor:
+                variables["cursor"] = cursor
+
+            data = await self._request(query, variables)
+            issues_data = data.get("project", {}).get("issues", {})
+            nodes = issues_data.get("nodes", [])
+
+            for i in nodes:
+                labels = [
+                    LinearLabel(id=l["id"], name=l["name"])
+                    for l in i.get("labels", {}).get("nodes", [])
+                ]
+                all_issues.append(
+                    LinearIssue(
+                        id=i["id"],
+                        identifier=i.get("identifier", ""),
+                        title=i.get("title", ""),
+                        description=i.get("description", ""),
+                        url=i.get("url", ""),
+                        state_id=i.get("stateId", ""),
+                        priority=i.get("priority", 0),
+                        parent_id=i.get("parentId"),
+                        labels=labels,
+                    )
+                )
+
+            page_info = issues_data.get("pageInfo", {})
+            if page_info.get("hasNextPage") and page_info.get("endCursor"):
+                cursor = page_info["endCursor"]
+            else:
+                break
+
+        return all_issues
+
     async def create_sub_issue(
         self, parent_id: str, inp: LinearIssueCreateInput
     ) -> LinearIssue:
