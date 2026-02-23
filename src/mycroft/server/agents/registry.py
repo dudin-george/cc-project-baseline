@@ -9,6 +9,11 @@ from mycroft.server.agents.product_manual import ManualUseCaseAgent
 from mycroft.server.agents.product_auto import AutoUseCaseAgent
 from mycroft.server.agents.architect_manual import ManualArchitectAgent
 from mycroft.server.agents.architect_auto import AutoArchitectAgent
+from mycroft.server.agents.project_setup import ProjectSetupAgent
+from mycroft.server.agents.c4_designer import C4DesignerAgent
+from mycroft.server.agents.work_planner import WorkPlannerAgent
+from mycroft.server.agents.execution_dashboard import ExecutionDashboardAgent
+from mycroft.server.agents.e2e_tester import E2ETestingAgent
 from mycroft.server.state.project import ProjectState
 
 AGENT_MAP: dict[StepId, type[BaseAgent]] = {
@@ -17,6 +22,11 @@ AGENT_MAP: dict[StepId, type[BaseAgent]] = {
     StepId.USE_CASES_AUTO: AutoUseCaseAgent,
     StepId.ARCHITECTURE_MANUAL: ManualArchitectAgent,
     StepId.ARCHITECTURE_AUTO: AutoArchitectAgent,
+    StepId.PROJECT_SETUP: ProjectSetupAgent,
+    StepId.C4_DESIGN: C4DesignerAgent,
+    StepId.WORK_PLANNING: WorkPlannerAgent,
+    StepId.EXECUTION: ExecutionDashboardAgent,
+    StepId.E2E_TESTING: E2ETestingAgent,
 }
 
 
