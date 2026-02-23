@@ -1,7 +1,3 @@
 {$DOMAIN} {
-    reverse_proxy server:8765 {
-        transport http {
-            versions 1.1
-        }
-    }
+    reverse_proxy server:8765
 }
