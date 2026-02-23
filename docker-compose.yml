@@ -1,8 +1,6 @@
 services:
   server:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     ports:
       - "8765:8765"
     volumes:
@@ -11,32 +9,8 @@ services:
       - .env
     restart: unless-stopped
 
-  dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    volumes:
-      - .:/app
-    env_file:
-      - .env
-    profiles:
-      - dev
-
-  lint:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    volumes:
-      - ./src:/app/src:ro
-      - ./pyproject.toml:/app/pyproject.toml:ro
-    command: ruff check src/
-    profiles:
-      - lint
-
   test:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
+    build: .
     volumes:
       - ./src:/app/src:ro
       - ./tests:/app/tests:ro
@@ -44,6 +18,15 @@ services:
     command: pytest tests/ -v
     profiles:
       - test
+
+  lint:
+    build: .
+    volumes:
+      - ./src:/app/src:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+    command: ruff check src/
+    profiles:
+      - lint
 
 volumes:
   server-data:
