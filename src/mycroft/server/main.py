@@ -17,27 +17,32 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
-app = FastAPI(title="Mycroft Server", version="0.1.0")
-app.include_router(linear_webhook_router)
-
 logger = logging.getLogger(__name__)
 
-
-@app.middleware("http")
-async def debug_middleware(request, call_next):
-    logger.info("HTTP request: %s %s headers=%s", request.method, request.url.path, dict(request.headers))
-    return await call_next(request)
+_inner_app = FastAPI(title="Mycroft Server", version="0.1.0")
+_inner_app.include_router(linear_webhook_router)
 
 
-@app.websocket("/ws")
+@_inner_app.websocket("/ws")
 async def ws_endpoint(ws):
-    logger.info("WS handler reached! scope=%s", {k: v for k, v in ws.scope.items() if k in ("type", "path", "scheme", "headers")})
+    logger.info("WS handler reached!")
     await websocket_endpoint(ws)
 
 
-@app.get("/health")
-async def health():
+@_inner_app.get("/health")
+async def _health():
     return {"status": "ok"}
+
+
+async def app(scope, receive, send):
+    """ASGI wrapper that logs every request before FastAPI."""
+    logger.info("ASGI scope: type=%s path=%s", scope.get("type"), scope.get("path"))
+    if scope["type"] == "websocket":
+        headers = dict(scope.get("headers", []))
+        logger.info("WS headers: %s", {k.decode(): v.decode() for k, v in headers.items()})
+    await _inner_app(scope, receive, send)
+
+
 
 
 def cli() -> None:
