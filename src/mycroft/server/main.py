@@ -20,9 +20,18 @@ logging.basicConfig(
 app = FastAPI(title="Mycroft Server", version="0.1.0")
 app.include_router(linear_webhook_router)
 
+logger = logging.getLogger(__name__)
+
+
+@app.middleware("http")
+async def debug_middleware(request, call_next):
+    logger.info("HTTP request: %s %s headers=%s", request.method, request.url.path, dict(request.headers))
+    return await call_next(request)
+
 
 @app.websocket("/ws")
 async def ws_endpoint(ws):
+    logger.info("WS handler reached! scope=%s", {k: v for k, v in ws.scope.items() if k in ("type", "path", "scheme", "headers")})
     await websocket_endpoint(ws)
 
 
